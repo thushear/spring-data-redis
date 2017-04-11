@@ -25,8 +25,8 @@ import org.reactivestreams.Publisher;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.domain.Sort.Direction;
 import org.springframework.data.redis.connection.DefaultTuple;
+import org.springframework.data.redis.connection.ReactiveRedisConnection.CommandResponse;
 import org.springframework.data.redis.connection.ReactiveRedisConnection.KeyCommand;
-import org.springframework.data.redis.connection.ReactiveRedisConnection.MultiValueResponse;
 import org.springframework.data.redis.connection.ReactiveRedisConnection.NumericResponse;
 import org.springframework.data.redis.connection.ReactiveZSetCommands;
 import org.springframework.data.redis.connection.RedisZSetCommands.Aggregate;
@@ -175,43 +175,39 @@ public class LettuceReactiveZSetCommands implements ReactiveZSetCommands {
 	 * @see org.springframework.data.redis.connection.ReactiveZSetCommands#zRange(org.reactivestreams.Publisher)
 	 */
 	@Override
-	public Flux<MultiValueResponse<ZRangeCommand, Tuple>> zRange(Publisher<ZRangeCommand> commands) {
+	public Flux<CommandResponse<ZRangeCommand, Flux<Tuple>>> zRange(Publisher<ZRangeCommand> commands) {
 
 		return connection.execute(cmd -> Flux.from(commands).flatMap(command -> {
 
 			Assert.notNull(command.getKey(), "Key must not be null!");
 			Assert.notNull(command.getRange(), "Range must not be null!");
 
-			Mono<List<Tuple>> result;
+			Flux<Tuple> result;
 
 			if (ObjectUtils.nullSafeEquals(command.getDirection(), Direction.ASC)) {
 				if (command.isWithScores()) {
 
-					result = cmd
-							.zrangeWithScores(command.getKey(), command.getRange().getLowerBound(),
-									command.getRange().getUpperBound())
-							.map(sc -> (Tuple) new DefaultTuple(getBytes(sc), sc.getScore())).collectList();
+					result = cmd.zrangeWithScores(command.getKey(), command.getRange().getLowerBound(),
+							command.getRange().getUpperBound()).map(sc -> (Tuple) new DefaultTuple(getBytes(sc), sc.getScore()));
 				} else {
 
 					result = cmd.zrange(command.getKey(), command.getRange().getLowerBound(), command.getRange().getUpperBound())
-							.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN)).collectList();
+							.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN));
 				}
 			} else {
 				if (command.isWithScores()) {
 
-					result = cmd
-							.zrevrangeWithScores(command.getKey(), command.getRange().getLowerBound(),
-									command.getRange().getUpperBound())
-							.map(sc -> (Tuple) new DefaultTuple(getBytes(sc), sc.getScore())).collectList();
+					result = cmd.zrevrangeWithScores(command.getKey(), command.getRange().getLowerBound(),
+							command.getRange().getUpperBound()).map(sc -> (Tuple) new DefaultTuple(getBytes(sc), sc.getScore()));
 				} else {
 
 					result = cmd
 							.zrevrange(command.getKey(), command.getRange().getLowerBound(), command.getRange().getUpperBound())
-							.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN)).collectList();
+							.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN));
 				}
 			}
 
-			return result.map(value -> new MultiValueResponse<>(command, value));
+			return Mono.just(new CommandResponse<>(command, result));
 		}));
 	}
 
@@ -220,7 +216,8 @@ public class LettuceReactiveZSetCommands implements ReactiveZSetCommands {
 	 * @see org.springframework.data.redis.connection.ReactiveZSetCommands#zRange(org.reactivestreams.Publisher)
 	 */
 	@Override
-	public Flux<MultiValueResponse<ZRangeByScoreCommand, Tuple>> zRangeByScore(Publisher<ZRangeByScoreCommand> commands) {
+	public Flux<CommandResponse<ZRangeByScoreCommand, Flux<Tuple>>> zRangeByScore(
+			Publisher<ZRangeByScoreCommand> commands) {
 
 		return connection.execute(cmd -> Flux.from(commands).flatMap(command -> {
 
@@ -229,7 +226,7 @@ public class LettuceReactiveZSetCommands implements ReactiveZSetCommands {
 
 			boolean isLimited = command.getLimit().isPresent();
 
-			Mono<List<Tuple>> result;
+			Publisher<Tuple> result;
 
 			if (ObjectUtils.nullSafeEquals(command.getDirection(), Direction.ASC)) {
 
@@ -239,21 +236,21 @@ public class LettuceReactiveZSetCommands implements ReactiveZSetCommands {
 
 					if (!isLimited) {
 						result = cmd.zrangebyscoreWithScores(command.getKey(), range)
-								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore())).collectList();
+								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore()));
 					} else {
 						result = cmd
 								.zrangebyscoreWithScores(command.getKey(), range, LettuceConverters.toLimit(command.getLimit().get()))
-								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore())).collectList();
+								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore()));
 					}
 				} else {
 
 					if (!isLimited) {
 						result = cmd.zrangebyscore(command.getKey(), range)
-								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN)).collectList();
+								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN));
 					} else {
 
 						result = cmd.zrangebyscore(command.getKey(), range, LettuceConverters.toLimit(command.getLimit().get()))
-								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN)).collectList();
+								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN));
 					}
 				}
 			} else {
@@ -264,28 +261,28 @@ public class LettuceReactiveZSetCommands implements ReactiveZSetCommands {
 
 					if (!isLimited) {
 						result = cmd.zrevrangebyscoreWithScores(command.getKey(), range)
-								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore())).collectList();
+								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore()));
 					} else {
 
 						result = cmd
 								.zrevrangebyscoreWithScores(command.getKey(), range,
 										LettuceConverters.toLimit(command.getLimit().get()))
-								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore())).collectList();
+								.map(sc -> (Tuple) new DefaultTuple(ByteUtils.getBytes(sc.getValue()), sc.getScore()));
 					}
 				} else {
 
 					if (!isLimited) {
 						result = cmd.zrevrangebyscore(command.getKey(), range)
-								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN)).collectList();
+								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN));
 					} else {
 
 						result = cmd.zrevrangebyscore(command.getKey(), range, LettuceConverters.toLimit(command.getLimit().get()))
-								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN)).collectList();
+								.map(value -> (Tuple) new DefaultTuple(ByteUtils.getBytes(value), Double.NaN));
 					}
 				}
 			}
 
-			return result.map(value -> new MultiValueResponse<>(command, value));
+			return Mono.just(new CommandResponse<>(command, Flux.from(result)));
 		}));
 	}
 
@@ -433,7 +430,8 @@ public class LettuceReactiveZSetCommands implements ReactiveZSetCommands {
 	 * @see org.springframework.data.redis.connection.ReactiveZSetCommands#zRangeByLex(org.reactivestreams.Publisher)
 	 */
 	@Override
-	public Flux<MultiValueResponse<ZRangeByLexCommand, ByteBuffer>> zRangeByLex(Publisher<ZRangeByLexCommand> commands) {
+	public Flux<CommandResponse<ZRangeByLexCommand, Flux<ByteBuffer>>> zRangeByLex(
+			Publisher<ZRangeByLexCommand> commands) {
 
 		return connection.execute(cmd -> Flux.from(commands).flatMap(command -> {
 
@@ -458,7 +456,7 @@ public class LettuceReactiveZSetCommands implements ReactiveZSetCommands {
 				}
 			}
 
-			return result.collectList().map(value -> new MultiValueResponse<>(command, value));
+			return Mono.just(new CommandResponse<>(command, result));
 		}));
 	}
 

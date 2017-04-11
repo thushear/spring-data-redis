@@ -15,6 +15,9 @@
  */
 package org.springframework.data.redis.connection.lettuce;
 
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
@@ -33,9 +36,6 @@ import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
 
 import com.lambdaworks.redis.KeyValue;
-
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 /**
  * @author Christoph Strobl
@@ -169,15 +169,15 @@ public class LettuceReactiveHashCommands implements ReactiveHashCommands {
 	 * @see org.springframework.data.redis.connection.ReactiveHashCommands#hKeys(org.reactivestreams.Publisher)
 	 */
 	@Override
-	public Flux<MultiValueResponse<KeyCommand, ByteBuffer>> hKeys(Publisher<KeyCommand> commands) {
+	public Flux<CommandResponse<KeyCommand, Flux<ByteBuffer>>> hKeys(Publisher<KeyCommand> commands) {
 
 		return connection.execute(cmd -> Flux.from(commands).flatMap(command -> {
 
 			Assert.notNull(command.getKey(), "Key must not be null!");
 
-			Mono<List<ByteBuffer>> result = cmd.hkeys(command.getKey()).collectList();
+			Flux<ByteBuffer> result = cmd.hkeys(command.getKey());
 
-			return result.map(value -> new MultiValueResponse<>(command, value));
+			return Mono.just(new CommandResponse<>(command, result));
 		}));
 	}
 
@@ -186,15 +186,15 @@ public class LettuceReactiveHashCommands implements ReactiveHashCommands {
 	 * @see org.springframework.data.redis.connection.ReactiveHashCommands#hKeys(org.reactivestreams.Publisher)
 	 */
 	@Override
-	public Flux<MultiValueResponse<KeyCommand, ByteBuffer>> hVals(Publisher<KeyCommand> commands) {
+	public Flux<CommandResponse<KeyCommand, Flux<ByteBuffer>>> hVals(Publisher<KeyCommand> commands) {
 
 		return connection.execute(cmd -> Flux.from(commands).flatMap(command -> {
 
 			Assert.notNull(command.getKey(), "Key must not be null!");
 
-			Mono<List<ByteBuffer>> result = cmd.hvals(command.getKey()).collectList();
+			Flux<ByteBuffer> result = cmd.hvals(command.getKey());
 
-			return result.map(value -> new MultiValueResponse<>(command, value));
+			return Mono.just(new CommandResponse<>(command, result));
 		}));
 	}
 
@@ -203,7 +203,8 @@ public class LettuceReactiveHashCommands implements ReactiveHashCommands {
 	 * @see org.springframework.data.redis.connection.ReactiveHashCommands#hGetAll(org.reactivestreams.Publisher)
 	 */
 	@Override
-	public Flux<CommandResponse<KeyCommand, Map<ByteBuffer, ByteBuffer>>> hGetAll(Publisher<KeyCommand> commands) {
+	public Flux<CommandResponse<KeyCommand, Flux<Map.Entry<ByteBuffer, ByteBuffer>>>> hGetAll(
+			Publisher<KeyCommand> commands) {
 
 		return connection.execute(cmd -> Flux.from(commands).flatMap(command -> {
 
@@ -211,7 +212,7 @@ public class LettuceReactiveHashCommands implements ReactiveHashCommands {
 
 			Mono<Map<ByteBuffer, ByteBuffer>> result = cmd.hgetall(command.getKey());
 
-			return result.map(value -> new CommandResponse<>(command, value));
+			return Mono.just(new CommandResponse<>(command, result.flatMap(v -> Flux.fromStream(v.entrySet().stream()))));
 		}));
 	}
 }
